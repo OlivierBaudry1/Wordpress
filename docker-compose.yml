@@ -1,0 +1,74 @@
+services:
+  db:
+    image: mariadb:11.7.2
+    container_name: wordpress-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MYSQL_DATABASE}
+      MARIADB_USER: ${MYSQL_USER}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - LaPlateforme-net
+
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: wordpress-php
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      UPLOAD_MAX_FILESIZE: ${UPLOAD_MAX_FILESIZE}
+      POST_MAX_SIZE: ${POST_MAX_SIZE}
+      MEMORY_LIMIT: ${MEMORY_LIMIT}
+      MAX_EXECUTION_TIME: ${MAX_EXECUTION_TIME}
+    volumes:
+      - ./wordpress:/var/www/html
+    healthcheck:
+      test: ["CMD", "pgrep", "php-fpm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - LaPlateforme-net
+
+
+  nginx:
+    image: nginx:1.27.5
+    container_name: wordpress-nginx
+    restart: unless-stopped
+    depends_on:
+      - php
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./wordpress:/var/www/html:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - LaPlateforme-net
+
+volumes:
+  db_data:
+    name: wordpress_db_data
+
+networks:
+  LaPlateforme-net:
+    driver: bridge
